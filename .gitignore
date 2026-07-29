@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+data/uploads/
+data/results/
+*.sqlite
+*.sqlite.traa.pkl
+*.log

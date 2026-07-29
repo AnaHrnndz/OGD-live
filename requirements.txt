@@ -1,0 +1,2 @@
+-e ./third_party/OG_Delineation
+pydantic>=2,<3
