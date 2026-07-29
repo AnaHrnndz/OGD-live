@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app import config
 from app.core.jobs import Job, JobAlreadyRunningError, JobStatus, job_manager
+from app.core.smartview_manager import smartview_manager
 from app.schemas import OgdParams, OgdResult
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
@@ -166,3 +167,28 @@ async def download_file(job_id: str, filename: str) -> FileResponse:
     job_dir = _job_dir(job_id)
     file_path = _safe_file(job_dir, filename)
     return FileResponse(file_path, filename=filename)
+
+
+@router.post("/{job_id}/visualize")
+async def visualize_analysis(job_id: str) -> dict:
+    """Lanza (o relanza) Smartview sobre el árbol anotado de este job.
+
+    Solo puede haber una visualización activa a la vez: lanzar una nueva
+    mata la anterior (ver plan de desarrollo, v1).
+    """
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+    if job.status != JobStatus.DONE or job.result is None:
+        raise HTTPException(
+            status_code=409, detail=f"El job no ha terminado (estado: {job.status.value})"
+        )
+
+    try:
+        await smartview_manager.start(
+            job.result.tree_annot_path, _job_dir(job_id) / "_smartview"
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"viewer_url": "/viewer"}

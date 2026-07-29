@@ -11,6 +11,7 @@
     #status { margin-top: 1rem; font-weight: bold; }
     #files a { display: block; margin-top: 0.3rem; }
     .error { color: #b00020; }
+    #viewer-frame { width: 100%; height: 600px; border: 1px solid #ccc; margin-top: 1rem; display: none; }
   </style>
 </head>
 <body>
@@ -38,17 +39,25 @@
 
   <div id="status"></div>
   <div id="files"></div>
+  <button id="visualize-btn" style="display:none">Ver árbol interactivo</button>
+  <iframe id="viewer-frame"></iframe>
 
   <script>
     const form = document.getElementById('analysis-form');
     const statusEl = document.getElementById('status');
     const filesEl = document.getElementById('files');
+    const visualizeBtn = document.getElementById('visualize-btn');
+    const viewerFrame = document.getElementById('viewer-frame');
 
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       statusEl.textContent = 'Enviando...';
       statusEl.className = '';
       filesEl.innerHTML = '';
+
+      visualizeBtn.style.display = 'none';
+      viewerFrame.style.display = 'none';
+      viewerFrame.src = '';
 
       const formData = new FormData(form);
       let response;
@@ -84,6 +93,23 @@
             a.textContent = name;
             filesEl.appendChild(a);
           }
+          visualizeBtn.style.display = 'inline-block';
+          visualizeBtn.onclick = async () => {
+            visualizeBtn.disabled = true;
+            try {
+              const vres = await fetch(`/api/analyses/${job_id}/visualize`, { method: 'POST' });
+              if (!vres.ok) {
+                const body = await vres.json().catch(() => ({}));
+                alert('Error al lanzar la visualización: ' + (body.detail || vres.status));
+                return;
+              }
+              const { viewer_url } = await vres.json();
+              viewerFrame.src = viewer_url;
+              viewerFrame.style.display = 'block';
+            } finally {
+              visualizeBtn.disabled = false;
+            }
+          };
         } else if (ev.data === 'error') {
           statusEl.className = 'error';
           events.close();
