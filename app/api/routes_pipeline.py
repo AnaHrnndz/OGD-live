@@ -1,28 +1,58 @@
-"""Endpoint REST mínimo y bloqueante para lanzar un análisis OGD.
-
-Sin cola de jobs ni progreso (SSE) todavía: ver M2 en el plan de desarrollo.
+"""Endpoints REST para lanzar análisis OGD, seguir su progreso y descargar
+resultados. La ejecución es asíncrona (JobManager); ver M1 para la versión
+bloqueante original.
 """
 
+import asyncio
 import shutil
-import uuid
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app import config
-from app.core.ogd_adapter import run_analysis
-from app.schemas import OgdParams
+from app.core.jobs import Job, JobAlreadyRunningError, JobStatus, job_manager
+from app.schemas import OgdParams, OgdResult
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 
+_RESULT_FILE_FIELDS = (
+    ("tree_annot", "tree_annot_path"),
+    ("ogs_info", "ogs_info_path"),
+    ("seq2ogs_tsv", "seq2ogs_tsv_path"),
+    ("seq2ogs_jsonl", "seq2ogs_jsonl_path"),
+    ("pairs", "pairs_path"),
+    ("strict_pairs", "strict_pairs_path"),
+)
 
-class AnalysisResponse(BaseModel):
+
+class JobStatusResponse(BaseModel):
     job_id: str
-    elapsed_seconds: float
-    files: dict[str, str]
+    status: str
+    error: Optional[str] = None
+    files: dict[str, str] = {}
+
+
+def _files_for_result(job_id: str, result: Optional[OgdResult]) -> dict[str, str]:
+    if result is None:
+        return {}
+    files = {}
+    for logical_name, attr in _RESULT_FILE_FIELDS:
+        path = getattr(result, attr)
+        if path is not None and path.is_file():
+            files[logical_name] = f"/api/analyses/{job_id}/files/{path.name}"
+    return files
+
+
+def _job_status_response(job: Job) -> JobStatusResponse:
+    return JobStatusResponse(
+        job_id=job.job_id,
+        status=job.status.value,
+        error=job.error,
+        files=_files_for_result(job.job_id, job.result),
+    )
 
 
 def _job_dir(job_id: str) -> Path:
@@ -42,7 +72,7 @@ def _safe_file(job_dir: Path, filename: str) -> Path:
     return file_path
 
 
-@router.post("", response_model=AnalysisResponse)
+@router.post("", response_model=JobStatusResponse, status_code=202)
 async def create_analysis(
     tree: UploadFile = File(..., description="Árbol génico en formato Newick (.nwk/.nw)"),
     taxonomy_type: str = Form("NCBI"),
@@ -57,21 +87,28 @@ async def create_analysis(
     species_losses_perct: float = Form(0.7),
     no_inherit_outliers: bool = Form(False),
     skip_get_pairs: bool = Form(False),
-) -> AnalysisResponse:
-    job_id = uuid.uuid4().hex
+) -> JobStatusResponse:
+    try:
+        job_id = await job_manager.reserve_job_id()
+    except JobAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     upload_dir = config.UPLOAD_DIR / job_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    tree_path = upload_dir / (Path(tree.filename or "tree.nw").name)
+    tree_path = upload_dir / Path(tree.filename or "tree.nw").name
 
-    size = 0
-    with tree_path.open("wb") as out_file:
-        while chunk := await tree.read(1024 * 1024):
-            size += len(chunk)
-            if size > config.MAX_UPLOAD_SIZE_BYTES:
-                shutil.rmtree(upload_dir, ignore_errors=True)
-                raise HTTPException(status_code=413, detail="Árbol demasiado grande")
-            out_file.write(chunk)
+    try:
+        size = 0
+        with tree_path.open("wb") as out_file:
+            while chunk := await tree.read(1024 * 1024):
+                size += len(chunk)
+                if size > config.MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(status_code=413, detail="Árbol demasiado grande")
+                out_file.write(chunk)
+    except Exception:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        job_manager.release(job_id)
+        raise
 
     params = OgdParams(
         tree_path=tree_path,
@@ -91,24 +128,37 @@ async def create_analysis(
         skip_get_pairs=skip_get_pairs,
     )
 
-    try:
-        result = run_analysis(params)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    job = job_manager.register(job_id, params)
+    await job_manager.start(job)
 
-    files = {}
-    for logical_name, path in (
-        ("tree_annot", result.tree_annot_path),
-        ("ogs_info", result.ogs_info_path),
-        ("seq2ogs_tsv", result.seq2ogs_tsv_path),
-        ("seq2ogs_jsonl", result.seq2ogs_jsonl_path),
-        ("pairs", result.pairs_path),
-        ("strict_pairs", result.strict_pairs_path),
-    ):
-        if path is not None and path.is_file():
-            files[logical_name] = f"/api/analyses/{job_id}/files/{path.name}"
+    return _job_status_response(job)
 
-    return AnalysisResponse(job_id=job_id, elapsed_seconds=result.elapsed_seconds, files=files)
+
+@router.get("/{job_id}", response_model=JobStatusResponse)
+async def get_analysis(job_id: str) -> JobStatusResponse:
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+    return _job_status_response(job)
+
+
+@router.get("/{job_id}/events")
+async def stream_analysis_events(job_id: str) -> StreamingResponse:
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+
+    async def event_stream():
+        last_status = None
+        while True:
+            if job.status != last_status:
+                last_status = job.status
+                yield f"event: status\ndata: {job.status.value}\n\n"
+            if job.status in (JobStatus.DONE, JobStatus.ERROR):
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/{job_id}/files/{filename}")

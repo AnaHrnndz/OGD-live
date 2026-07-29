@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>OGD-live</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 0.75rem; font-size: 0.9rem; }
+    input, select { width: 100%; padding: 0.4rem; margin-top: 0.2rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: 0.5rem 1rem; }
+    #status { margin-top: 1rem; font-weight: bold; }
+    #files a { display: block; margin-top: 0.3rem; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>OGD-live</h1>
+  <p>Delineación de Grupos Ortólogos a partir de un árbol génico (Newick).</p>
+
+  <form id="analysis-form">
+    <label>Árbol (.nwk/.nw)
+      <input type="file" name="tree" required>
+    </label>
+    <label>Enraizado (rooting)
+      <select name="rooting">
+        <option value="Midpoint">Midpoint</option>
+        <option value="MinVar">MinVar</option>
+      </select>
+    </label>
+    <label>Delimitador de especie en el nombre de hoja
+      <input type="text" name="sp_delimitator" value=".">
+    </label>
+    <label>Umbral global de Species Overlap
+      <input type="number" step="0.01" name="sp_ovlap_all" value="0.1">
+    </label>
+    <button type="submit">Ejecutar análisis</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="files"></div>
+
+  <script>
+    const form = document.getElementById('analysis-form');
+    const statusEl = document.getElementById('status');
+    const filesEl = document.getElementById('files');
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      statusEl.textContent = 'Enviando...';
+      statusEl.className = '';
+      filesEl.innerHTML = '';
+
+      const formData = new FormData(form);
+      let response;
+      try {
+        response = await fetch('/api/analyses', { method: 'POST', body: formData });
+      } catch (err) {
+        statusEl.textContent = 'Error de red: ' + err;
+        statusEl.className = 'error';
+        return;
+      }
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        statusEl.textContent = 'Error: ' + (body.detail || response.status);
+        statusEl.className = 'error';
+        return;
+      }
+
+      const { job_id } = await response.json();
+      statusEl.textContent = 'En cola...';
+
+      const events = new EventSource(`/api/analyses/${job_id}/events`);
+      events.addEventListener('status', async (ev) => {
+        statusEl.textContent = 'Estado: ' + ev.data;
+        if (ev.data === 'done') {
+          events.close();
+          const res = await fetch(`/api/analyses/${job_id}`);
+          const data = await res.json();
+          filesEl.innerHTML = '';
+          for (const [name, url] of Object.entries(data.files)) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.textContent = name;
+            filesEl.appendChild(a);
+          }
+        } else if (ev.data === 'error') {
+          statusEl.className = 'error';
+          events.close();
+        }
+      });
+
+      events.onerror = () => {
+        events.close();
+      };
+    });
+  </script>
+</body>
+</html>
