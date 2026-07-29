@@ -67,6 +67,9 @@ class JobManager:
     def get(self, job_id: str) -> Optional[Job]:
         return self._jobs.get(job_id)
 
+    def list_jobs(self) -> list[Job]:
+        return list(self._jobs.values())
+
     async def start(self, job: Job) -> None:
         """Lanza la ejecución del job en background (fire-and-forget)."""
         asyncio.create_task(self._run(job))
