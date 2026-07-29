@@ -39,7 +39,7 @@ async def run_ogd_analysis(
     best_taxa_threshold: float = 0.9,
     species_losses_perct: float = 0.7,
     no_inherit_outliers: bool = False,
-    skip_get_pairs: bool = False,
+    skip_get_pairs: bool = True,
 ) -> dict:
     """Lanza un análisis de delineación de Grupos Ortólogos (OGs) sobre un
     árbol génico en formato Newick.
@@ -49,6 +49,10 @@ async def run_ogd_analysis(
     los resultados una vez que el estado sea "done". Solo puede haber un
     análisis activo a la vez: si ya hay uno en curso, devuelve un error con
     el job_id del que está corriendo.
+
+    Por defecto no se extraen los pares de ortólogos (skip_get_pairs=True),
+    ya que es el paso más lento del pipeline; pon skip_get_pairs=False para
+    generarlos.
     """
     try:
         job_id = await job_manager.reserve_job_id()

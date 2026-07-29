@@ -6,46 +6,54 @@
   <title>OGD-live</title>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #f7f8fa;
+      /* Siempre modo claro: se ignora deliberadamente la preferencia de
+         modo oscuro del sistema/navegador (decisión explícita del usuario). */
+      color-scheme: light;
+      --bg: #fcfcfd;
       --surface: #ffffff;
-      --border: #e2e5ea;
-      --text: #1c1f26;
-      --text-muted: #6b7280;
-      --accent: #2f6feb;
+      --border: #e4e4e7;
+      --text: #1d273b;
+      --text-muted: #71717a;
+      --accent: #0ca678;
       --accent-contrast: #ffffff;
       --error: #b3261e;
       --error-bg: #fdecea;
-      --ok: #1a7f4e;
-      --ok-bg: #e8f6ef;
-      --radius: 10px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14161a;
-        --surface: #1c1f26;
-        --border: #2c3037;
-        --text: #e7e9ee;
-        --text-muted: #9aa1ac;
-        --accent: #6ea1ff;
-        --accent-contrast: #0b0d10;
-        --error: #ff8a80;
-        --error-bg: #3a1f1e;
-        --ok: #6fd8a4;
-        --ok-bg: #133226;
-      }
+      --ok: #0ca678;
+      --ok-bg: rgba(12, 166, 120, 0.12);
+      --toggle-off: #c3c7ce;
+      --radius: 0.5rem;
     }
 
     * { box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
       background: var(--bg);
       color: var(--text);
       max-width: 720px;
       margin: 0 auto;
       padding: 2.5rem 1.25rem 4rem;
       line-height: 1.5;
+      transition: max-width 0.2s ease;
+    }
+    body.viz-active { max-width: 1800px; }
+
+    .layout { display: block; }
+    body.viz-active .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 20%) 1fr;
+      align-items: start;
+      gap: 1.5rem;
+    }
+
+    .viewer-panel { display: none; }
+    body.viz-active .viewer-panel { display: block; }
+    .viewer-panel h2 {
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin: 0 0 1rem;
     }
 
     header { margin-bottom: 1.75rem; }
@@ -54,11 +62,14 @@
 
     .card {
       background: var(--surface);
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
+      border-top: 3px solid var(--accent);
       border-radius: var(--radius);
       padding: 1.5rem;
       margin-bottom: 1.25rem;
+      transition: box-shadow 0.15s ease;
     }
+    .card:focus-within, .card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06); }
     .card h2 {
       font-size: 0.95rem;
       text-transform: uppercase;
@@ -74,6 +85,49 @@
       font-size: 0.85rem;
       font-weight: 600;
       margin-bottom: 0.3rem;
+    }
+    .field label.toggle-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 0;
+    }
+    .toggle-switch input[type="checkbox"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: relative;
+      display: inline-block;
+      width: 2.4rem;
+      height: 1.4rem;
+      flex-shrink: 0;
+      background: var(--toggle-off);
+      border-radius: 999px;
+      transition: background 0.15s ease;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 1.1rem;
+      height: 1.1rem;
+      background: var(--surface);
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      transition: transform 0.15s ease;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(1rem); }
+    .toggle-switch input:focus-visible + .toggle-slider {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     .field .hint {
       display: block;
@@ -169,6 +223,7 @@
       display: none;
       background: var(--surface);
     }
+    body.viz-active #viewer-frame { height: 85vh; margin-top: 0; }
 
     .banner {
       padding: 0.6rem 0.9rem;
@@ -177,53 +232,126 @@
       margin-top: 0.75rem;
     }
     .banner.error { background: var(--error-bg); color: var(--error); }
+
+    details.advanced {
+      margin: 1.25rem 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0 1rem;
+    }
+    details.advanced[open] { padding-bottom: 1rem; }
+    details.advanced summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 0.75rem 0;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    details.advanced summary::-webkit-details-marker { display: none; }
+    details.advanced summary::before {
+      content: "▸";
+      display: inline-block;
+      transition: transform 0.15s ease;
+      font-size: 0.75rem;
+    }
+    details.advanced[open] summary::before { transform: rotate(90deg); }
+    details.advanced .field { margin-top: 1rem; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>OGD-live</h1>
-    <p>Orthologous Group Delineation from a gene tree (Newick).</p>
-  </header>
+  <div class="layout" id="layout">
+    <div class="sidebar">
+      <header>
+        <h1>OGD-live</h1>
+        <p>Orthologous Group Delineation from a gene tree (Newick).</p>
+      </header>
 
-  <form id="analysis-form" class="card">
-    <h2>Analysis</h2>
+      <form id="analysis-form" class="card">
+        <h2>Analysis</h2>
 
-    <div class="field">
-      <label for="tree-input">Gene tree</label>
-      <input id="tree-input" type="file" name="tree" accept=".nw,.nwk,.newick" required>
-      <span class="hint">Newick format, leaves named as SpeciesID.Gene (e.g. 9606.ENSP00000269305)</span>
-    </div>
+        <div class="field">
+          <label for="tree-input">Gene tree</label>
+          <input id="tree-input" type="file" name="tree" accept=".nw,.nwk,.newick" required>
+          <span class="hint">Newick format, leaves named as SpeciesID.Gene (e.g. 9606.ENSP00000269305)</span>
+        </div>
 
-    <div class="row">
-      <div class="field">
-        <label for="rooting-input">Rooting</label>
-        <select id="rooting-input" name="rooting">
-          <option value="Midpoint">Midpoint</option>
-          <option value="MinVar">MinVar</option>
-        </select>
+        <div class="row">
+          <div class="field">
+            <label for="rooting-input">Rooting</label>
+            <select id="rooting-input" name="rooting">
+              <option value="Midpoint">Midpoint</option>
+              <option value="MinVar">MinVar</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="delim-input">Species delimiter</label>
+            <input id="delim-input" type="text" name="sp_delimitator" value=".">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="ovlap-input">Global Species Overlap threshold</label>
+          <input id="ovlap-input" type="number" step="0.01" min="0" max="1" name="sp_ovlap_all" value="0.1">
+          <span class="hint">Higher value → fewer duplications, fewer and larger OGs. Lower value → more duplications, more and smaller OGs</span>
+        </div>
+
+        <div class="field">
+          <label class="toggle-switch">
+            <input id="extract-pairs-input" type="checkbox" name="extract_pairs">
+            <span class="toggle-slider"></span>
+            Extract ortholog pairs
+          </label>
+          <span class="hint">Off by default: this is the slowest step of the pipeline. Enable it to also compute all pairwise ortholog relationships</span>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced options</summary>
+
+          <div class="field">
+            <label for="taxonomy-input">Custom NCBI taxonomy database</label>
+            <input id="taxonomy-input" type="file" name="user_taxonomy_file" accept=".sqlite,.db">
+            <span class="hint">Optional. A .sqlite database already built by ETE4's NCBITaxa. If not provided, the server's default taxonomy database is used</span>
+          </div>
+
+          <div class="field">
+            <label for="lineage-input">Lineage threshold</label>
+            <input id="lineage-input" type="number" step="0.01" min="0" max="1" name="lineage_threshold" value="0.05">
+            <span class="hint">Minimum fraction of sequences needed to consider a taxon represented at a node; below this, it's treated as an outlier</span>
+          </div>
+
+          <div class="field">
+            <label for="best-taxa-input">Best taxa threshold</label>
+            <input id="best-taxa-input" type="number" step="0.01" min="0" max="1" name="best_taxa_threshold" value="0.9">
+            <span class="hint">Confidence threshold for the LCA taxonomic annotation</span>
+          </div>
+
+          <div class="field">
+            <label for="sp-loss-input">Species losses percentage</label>
+            <input id="sp-loss-input" type="number" step="0.01" min="0" max="1" name="species_losses_perct" value="0.7">
+            <span class="hint">Maximum fraction of species loss tolerated at a duplication node</span>
+          </div>
+        </details>
+
+        <button id="run-btn" type="submit">Run analysis</button>
+      </form>
+
+      <div id="status-card" class="card">
+        <h2>Progress</h2>
+        <span id="status-line"><span id="status-dot" class="dot"></span><span id="status-text">—</span></span>
+        <div id="error-banner" class="banner error" style="display:none"></div>
+        <div id="files"></div>
+        <button id="visualize-btn" class="secondary">View interactive tree</button>
       </div>
-      <div class="field">
-        <label for="delim-input">Species delimiter</label>
-        <input id="delim-input" type="text" name="sp_delimitator" value=".">
-      </div>
     </div>
 
-    <div class="field">
-      <label for="ovlap-input">Global Species Overlap threshold</label>
-      <input id="ovlap-input" type="number" step="0.01" min="0" max="1" name="sp_ovlap_all" value="0.1">
-      <span class="hint">Higher value → fewer duplications, fewer and larger OGs. Lower value → more duplications, more and smaller OGs</span>
+    <div class="viewer-panel" id="viewer-panel">
+      <h2>Interactive tree</h2>
+      <iframe id="viewer-frame" title="Interactive tree visualization"></iframe>
     </div>
-
-    <button id="run-btn" type="submit">Run analysis</button>
-  </form>
-
-  <div id="status-card" class="card">
-    <h2>Progress</h2>
-    <span id="status-line"><span id="status-dot" class="dot"></span><span id="status-text">—</span></span>
-    <div id="error-banner" class="banner error" style="display:none"></div>
-    <div id="files"></div>
-    <button id="visualize-btn" class="secondary">View interactive tree</button>
-    <iframe id="viewer-frame" title="Interactive tree visualization"></iframe>
   </div>
 
   <script>
@@ -267,6 +395,7 @@
       visualizeBtn.style.display = 'none';
       viewerFrame.style.display = 'none';
       viewerFrame.src = '';
+      document.body.classList.remove('viz-active');
       runBtn.disabled = true;
       setStatus('running', 'Uploading tree…');
 
@@ -326,6 +455,7 @@
               const { viewer_url } = await vres.json();
               viewerFrame.src = viewer_url;
               viewerFrame.style.display = 'block';
+              document.body.classList.add('viz-active');
             } finally {
               visualizeBtn.disabled = false;
               visualizeBtn.textContent = 'View interactive tree';

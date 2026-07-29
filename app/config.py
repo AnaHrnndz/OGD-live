@@ -21,3 +21,10 @@ TAXONOMY_DB = Path(
 )
 
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("OGD_MAX_UPLOAD_MB", "20")) * 1024 * 1024
+
+# Las bases de datos NCBITaxa (.sqlite) que un usuario podría subir como
+# taxonomía propia pesan cientos de MB o más de 1GB (ver M5) — necesitan un
+# límite mucho mayor que el de los árboles Newick.
+MAX_TAXONOMY_UPLOAD_SIZE_BYTES = (
+    int(os.environ.get("OGD_MAX_TAXONOMY_UPLOAD_MB", "2048")) * 1024 * 1024
+)

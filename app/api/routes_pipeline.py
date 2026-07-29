@@ -73,9 +73,27 @@ def _safe_file(job_dir: Path, filename: str) -> Path:
     return file_path
 
 
+async def _save_upload(upload: UploadFile, dest_dir: Path, max_size: int) -> Path:
+    """Guarda un UploadFile por streaming, rechazando si supera max_size."""
+    dest_path = dest_dir / Path(upload.filename or "file").name
+    size = 0
+    with dest_path.open("wb") as out_file:
+        while chunk := await upload.read(1024 * 1024):
+            size += len(chunk)
+            if size > max_size:
+                raise HTTPException(
+                    status_code=413, detail=f"{upload.filename or 'archivo'} demasiado grande"
+                )
+            out_file.write(chunk)
+    return dest_path
+
+
 @router.post("", response_model=JobStatusResponse, status_code=202)
 async def create_analysis(
     tree: UploadFile = File(..., description="Árbol génico en formato Newick (.nwk/.nw)"),
+    user_taxonomy_file: Optional[UploadFile] = File(
+        None, description="Base de datos NCBITaxa (.sqlite) propia (opcional)"
+    ),
     taxonomy_type: str = Form("NCBI"),
     rooting: str = Form("Midpoint"),
     sp_delimitator: str = Form("."),
@@ -87,7 +105,7 @@ async def create_analysis(
     best_taxa_threshold: float = Form(0.9),
     species_losses_perct: float = Form(0.7),
     no_inherit_outliers: bool = Form(False),
-    skip_get_pairs: bool = Form(False),
+    extract_pairs: bool = Form(False),
 ) -> JobStatusResponse:
     try:
         job_id = await job_manager.reserve_job_id()
@@ -96,16 +114,14 @@ async def create_analysis(
 
     upload_dir = config.UPLOAD_DIR / job_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    tree_path = upload_dir / Path(tree.filename or "tree.nw").name
 
     try:
-        size = 0
-        with tree_path.open("wb") as out_file:
-            while chunk := await tree.read(1024 * 1024):
-                size += len(chunk)
-                if size > config.MAX_UPLOAD_SIZE_BYTES:
-                    raise HTTPException(status_code=413, detail="Árbol demasiado grande")
-                out_file.write(chunk)
+        tree_path = await _save_upload(tree, upload_dir, config.MAX_UPLOAD_SIZE_BYTES)
+        user_taxonomy_path = config.TAXONOMY_DB
+        if user_taxonomy_file is not None and user_taxonomy_file.filename:
+            user_taxonomy_path = await _save_upload(
+                user_taxonomy_file, upload_dir, config.MAX_TAXONOMY_UPLOAD_SIZE_BYTES
+            )
     except Exception:
         shutil.rmtree(upload_dir, ignore_errors=True)
         job_manager.release(job_id)
@@ -115,7 +131,7 @@ async def create_analysis(
         tree_path=tree_path,
         output_path=config.RESULTS_DIR / job_id,
         taxonomy_type=taxonomy_type,
-        user_taxonomy=config.TAXONOMY_DB,
+        user_taxonomy=user_taxonomy_path,
         rooting=rooting,
         sp_delimitator=sp_delimitator,
         sp_ovlap_all=sp_ovlap_all,
@@ -126,7 +142,7 @@ async def create_analysis(
         best_taxa_threshold=best_taxa_threshold,
         species_losses_perct=species_losses_perct,
         no_inherit_outliers=no_inherit_outliers,
-        skip_get_pairs=skip_get_pairs,
+        skip_get_pairs=not extract_pairs,
     )
 
     job = job_manager.register(job_id, params)

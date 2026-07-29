@@ -34,7 +34,7 @@ class OgdParams(BaseModel):
     no_inherit_outliers: bool = False
 
     raw_alg: Optional[Path] = None
-    skip_get_pairs: bool = False
+    skip_get_pairs: bool = True
 
 
 class OgdResult(BaseModel):
