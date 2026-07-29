@@ -1,0 +1,11 @@
+.venv/
+.git/
+.gitmodules
+.claude/
+__pycache__/
+*.pyc
+*.log
+data/uploads/
+data/results/
+data/taxonomy/
+third_party/OG_Delineation/.git
