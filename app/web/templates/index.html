@@ -30,13 +30,31 @@
       font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
       background: var(--bg);
       color: var(--text);
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 2.5rem 1.25rem 4rem;
+      margin: 0;
       line-height: 1.5;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1.25rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-brand { font-weight: 700; font-size: 0.9rem; }
+    .topbar .doc-link { margin-top: 0; }
+
+    .page-content {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
       transition: max-width 0.2s ease;
     }
-    body.viz-active { max-width: 1800px; }
+    body.viz-active .page-content { max-width: 1800px; }
 
     .layout { display: block; }
     body.viz-active .layout {
@@ -56,9 +74,14 @@
       margin: 0 0 1rem;
     }
 
-    header { margin-bottom: 1.75rem; }
-    h1 { font-size: 1.5rem; margin: 0 0 0.35rem; }
-    header p { color: var(--text-muted); margin: 0; font-size: 0.95rem; }
+    .hero { margin-bottom: 2rem; text-align: center; }
+    .hero h1 { font-size: 2rem; margin: 0 0 0.75rem; }
+    .hero p {
+      color: var(--text-muted);
+      margin: 0 auto;
+      font-size: 0.95rem;
+      max-width: 900px;
+    }
 
     .card {
       background: var(--surface);
@@ -171,6 +194,22 @@
       border: 1px solid var(--accent);
     }
 
+    .doc-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .doc-link:hover { border-color: var(--accent); color: var(--accent); }
+
     #run-btn { margin-top: 0.5rem; width: 100%; }
 
     #status-card { display: none; }
@@ -260,16 +299,37 @@
     }
     details.advanced[open] summary::before { transform: rotate(90deg); }
     details.advanced .field { margin-top: 1rem; }
+
+    footer.site-footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    footer.site-footer a {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    footer.site-footer a:hover { color: var(--accent); }
   </style>
 </head>
 <body>
+  <header class="topbar">
+    <span class="topbar-brand">OGD-live v0.5.0</span>
+    <a class="doc-link" href="https://github.com/AnaHrnndz/OG_Delineation/wiki" target="_blank" rel="noopener noreferrer">Documentation</a>
+  </header>
+
+  <div class="page-content">
+  <header class="hero">
+    <h1>Orthologous Group Delineation</h1>
+    <p>Orthologous Group Delineation (OGD) is a Python bioinformatics pipeline that identifies Orthologous Groups (OGs) from gene phylogenetic trees, based on the detection and scoring of gene duplication events.</p>
+  </header>
+
   <div class="layout" id="layout">
     <div class="sidebar">
-      <header>
-        <h1>OGD-live</h1>
-        <p>Orthologous Group Delineation from a gene tree (Newick).</p>
-      </header>
-
       <form id="analysis-form" class="card">
         <h2>Analysis</h2>
 
@@ -291,12 +351,10 @@
             <label for="delim-input">Species delimiter</label>
             <input id="delim-input" type="text" name="sp_delimitator" value=".">
           </div>
-        </div>
-
-        <div class="field">
-          <label for="ovlap-input">Global Species Overlap threshold</label>
-          <input id="ovlap-input" type="number" step="0.01" min="0" max="1" name="sp_ovlap_all" value="0.1">
-          <span class="hint">Higher value → fewer duplications, fewer and larger OGs. Lower value → more duplications, more and smaller OGs</span>
+          <div class="field">
+            <label for="ovlap-input">Global Species Overlap threshold</label>
+            <input id="ovlap-input" type="number" step="0.01" min="0" max="1" name="sp_ovlap_all" value="0.1">
+          </div>
         </div>
 
         <div class="field">
@@ -358,6 +416,11 @@
       <h2>Interactive tree</h2>
       <iframe id="viewer-frame" title="Interactive tree visualization"></iframe>
     </div>
+  </div>
+
+  <footer class="site-footer">
+    Developed at the <a href="https://cgmlab.org/" target="_blank" rel="noopener noreferrer">Comparative Genomics &amp; Metagenomics Lab</a> (CBGP, Madrid) &copy; 2026 OGD v0.5.0.
+  </footer>
   </div>
 
   <script>
