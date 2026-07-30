@@ -9,8 +9,11 @@ from pydantic import BaseModel
 class OgdParams(BaseModel):
     """Parámetros de entrada para un análisis de delineación de OGs.
 
-    Deliberadamente NO expone eggNOG-mapper ni el módulo de recovery: están
-    fuera de alcance para la v1 (ver plan de desarrollo).
+    Deliberadamente NO expone la ejecución de eggNOG-mapper en sí (Linux-only,
+    requiere binarios y bases de datos externas pesadas) ni el módulo de
+    recovery: siguen fuera de alcance para la v1. Sí permite anotar el árbol
+    con una tabla de resultados de eggNOG-mapper ya calculada por el usuario
+    (emapper_main_table), sin ejecutar eggNOG-mapper en el servidor.
     """
 
     tree_path: Path
@@ -35,6 +38,8 @@ class OgdParams(BaseModel):
 
     raw_alg: Optional[Path] = None
     skip_get_pairs: bool = True
+
+    emapper_main_table: Optional[Path] = None
 
 
 class OgdResult(BaseModel):

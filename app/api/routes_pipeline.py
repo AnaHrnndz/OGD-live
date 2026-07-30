@@ -94,6 +94,9 @@ async def create_analysis(
     user_taxonomy_file: Optional[UploadFile] = File(
         None, description="Base de datos NCBITaxa (.sqlite) propia (opcional)"
     ),
+    emapper_main_table_file: Optional[UploadFile] = File(
+        None, description="Tabla de resultados de eggNOG-mapper (.emapper.annotations) ya calculada (opcional)"
+    ),
     taxonomy_type: str = Form("NCBI"),
     rooting: str = Form("Midpoint"),
     sp_delimitator: str = Form("."),
@@ -122,6 +125,11 @@ async def create_analysis(
             user_taxonomy_path = await _save_upload(
                 user_taxonomy_file, upload_dir, config.MAX_TAXONOMY_UPLOAD_SIZE_BYTES
             )
+        emapper_main_table_path = None
+        if emapper_main_table_file is not None and emapper_main_table_file.filename:
+            emapper_main_table_path = await _save_upload(
+                emapper_main_table_file, upload_dir, config.MAX_ANNOTATION_UPLOAD_SIZE_BYTES
+            )
     except Exception:
         shutil.rmtree(upload_dir, ignore_errors=True)
         job_manager.release(job_id)
@@ -143,6 +151,7 @@ async def create_analysis(
         species_losses_perct=species_losses_perct,
         no_inherit_outliers=no_inherit_outliers,
         skip_get_pairs=not extract_pairs,
+        emapper_main_table=emapper_main_table_path,
     )
 
     job = job_manager.register(job_id, params)

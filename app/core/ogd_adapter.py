@@ -18,9 +18,12 @@ from app.schemas import OgdParams, OgdResult
 def _build_namespace(params: OgdParams) -> argparse.Namespace:
     """Traduce OgdParams a la argparse.Namespace que espera run_ogd_pipeline.
 
-    Los campos relativos a eggNOG-mapper y al módulo de recovery quedan
-    fijados a sus valores "desactivados" porque están fuera de alcance
-    para la v1.
+    Los campos relativos a ejecutar eggNOG-mapper y al módulo de recovery
+    quedan fijados a sus valores "desactivados" porque están fuera de
+    alcance para la v1. `path2emapper_main` sí se expone: anota el árbol con
+    una tabla de resultados de eggNOG-mapper ya calculada, sin ejecutar
+    eggNOG-mapper (requiere third_party/OG_Delineation con el fix de
+    ogd_dev@d384326 o posterior — ver memoria del proyecto).
     """
     return argparse.Namespace(
         tree=params.tree_path,
@@ -50,7 +53,7 @@ def _build_namespace(params: OgdParams) -> argparse.Namespace:
         emapper_no_usemem=False,
         emapper_dmnd=None,
         emapper_pfam=None,
-        path2emapper_main=None,
+        path2emapper_main=params.emapper_main_table,
         path2emapper_pfams=None,
         # La visualización se gestiona aparte (smartview_manager), no aquí.
         open_visualization=False,

@@ -28,3 +28,9 @@ MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("OGD_MAX_UPLOAD_MB", "20")) * 1024 * 
 MAX_TAXONOMY_UPLOAD_SIZE_BYTES = (
     int(os.environ.get("OGD_MAX_TAXONOMY_UPLOAD_MB", "2048")) * 1024 * 1024
 )
+
+# Tablas de resultados de eggNOG-mapper (.emapper.annotations): normalmente
+# unos pocos MB a decenas de MB, pero se deja margen para proteomas grandes.
+MAX_ANNOTATION_UPLOAD_SIZE_BYTES = (
+    int(os.environ.get("OGD_MAX_ANNOTATION_UPLOAD_MB", "200")) * 1024 * 1024
+)
