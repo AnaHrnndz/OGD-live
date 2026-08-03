@@ -61,9 +61,15 @@
     body.viz-active .layout {
       display: grid;
       grid-template-columns: minmax(280px, 20%) 1fr;
+      grid-template-areas:
+        "sidebar viewer"
+        "sidebar tables";
       align-items: start;
       gap: 1.5rem;
     }
+    body.viz-active .sidebar { grid-area: sidebar; }
+    body.viz-active .viewer-panel { grid-area: viewer; }
+    body.viz-active #tables-card { grid-area: tables; }
 
     .viewer-panel { display: none; }
     body.viz-active .viewer-panel { display: block; }
@@ -254,6 +260,36 @@
     #files a::before { content: "⬇"; font-size: 0.75rem; }
 
     #visualize-btn { margin-top: 1.25rem; display: none; }
+
+    .table-section { margin-top: 1.5rem; }
+    .table-section:first-of-type { margin-top: 0; }
+    .table-section > label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+    .table-section input[type="search"] {
+      margin-bottom: 0.5rem;
+    }
+    .table-scroll {
+      overflow: auto;
+      max-height: 320px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .table-scroll table { border-collapse: collapse; width: 100%; font-size: 0.78rem; white-space: nowrap; }
+    .table-scroll th, .table-scroll td {
+      padding: 0.35rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .table-scroll th {
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+    }
+    .table-info { display: block; margin-top: 0.35rem; color: var(--text-muted); font-size: 0.75rem; }
     #viewer-frame {
       width: 100%;
       height: 600px;
@@ -413,6 +449,24 @@
       </div>
     </div>
 
+    <div id="tables-card" class="card" style="display:none">
+      <h2>Browse results</h2>
+
+      <div class="table-section">
+        <label for="ogs-search-input">OG table</label>
+        <input id="ogs-search-input" type="search" placeholder="Search OGs…">
+        <div class="table-scroll"><table id="ogs-table"></table></div>
+        <span id="ogs-table-info" class="table-info"></span>
+      </div>
+
+      <div class="table-section">
+        <label for="seq-search-input">Sequence → OG</label>
+        <input id="seq-search-input" type="search" placeholder="Search sequences…">
+        <div class="table-scroll"><table id="seq-table"></table></div>
+        <span id="seq-table-info" class="table-info"></span>
+      </div>
+    </div>
+
     <div class="viewer-panel" id="viewer-panel">
       <h2>Interactive tree</h2>
       <iframe id="viewer-frame" title="Interactive tree visualization"></iframe>
@@ -429,7 +483,6 @@
       tree_annot: 'Annotated tree (.nw)',
       ogs_info: 'OG table',
       seq2ogs_tsv: 'Sequence → OG (.tsv)',
-      seq2ogs_jsonl: 'Sequence → OG (.jsonl)',
       pairs: 'Ortholog pairs',
       strict_pairs: 'Strict pairs',
     };
@@ -444,6 +497,58 @@
     const filesEl = document.getElementById('files');
     const visualizeBtn = document.getElementById('visualize-btn');
     const viewerFrame = document.getElementById('viewer-frame');
+    const tablesCard = document.getElementById('tables-card');
+    const ogsSearchInput = document.getElementById('ogs-search-input');
+    const ogsTable = document.getElementById('ogs-table');
+    const ogsTableInfo = document.getElementById('ogs-table-info');
+    const seqSearchInput = document.getElementById('seq-search-input');
+    const seqTable = document.getElementById('seq-table');
+    const seqTableInfo = document.getElementById('seq-table-info');
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+
+    function renderTable(tableEl, columns, rows) {
+      const thead = '<thead><tr>' + columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+      const tbody = '<tbody>' + rows.map((r) =>
+        '<tr>' + r.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>'
+      ).join('') + '</tbody>';
+      tableEl.innerHTML = thead + tbody;
+    }
+
+    function setupSearchableTable(jobId, tableName, inputEl, tableEl, infoEl) {
+      let debounceTimer;
+
+      async function load() {
+        const q = inputEl.value.trim();
+        let res;
+        try {
+          res = await fetch(`/api/analyses/${jobId}/table/${tableName}?q=${encodeURIComponent(q)}&limit=200`);
+        } catch (err) {
+          infoEl.textContent = 'Network error';
+          return;
+        }
+        if (!res.ok) {
+          infoEl.textContent = 'Could not load table';
+          return;
+        }
+        const data = await res.json();
+        renderTable(tableEl, data.columns, data.rows);
+        infoEl.textContent = data.truncated
+          ? `Showing ${data.rows.length} of ${data.total} matches`
+          : `${data.total} row${data.total === 1 ? '' : 's'}`;
+      }
+
+      inputEl.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(load, 250);
+      });
+
+      load();
+    }
 
     function setStatus(kind, text) {
       statusDot.className = 'dot ' + kind;
@@ -465,6 +570,13 @@
       visualizeBtn.style.display = 'none';
       viewerFrame.style.display = 'none';
       viewerFrame.src = '';
+      tablesCard.style.display = 'none';
+      ogsSearchInput.value = '';
+      seqSearchInput.value = '';
+      ogsTable.innerHTML = '';
+      seqTable.innerHTML = '';
+      ogsTableInfo.textContent = '';
+      seqTableInfo.textContent = '';
       document.body.classList.remove('viz-active');
       runBtn.disabled = true;
       setStatus('running', 'Uploading tree…');
@@ -510,6 +622,10 @@
             a.textContent = FILE_LABELS[name] || name;
             filesEl.appendChild(a);
           }
+
+          tablesCard.style.display = 'block';
+          setupSearchableTable(job_id, 'ogs_info', ogsSearchInput, ogsTable, ogsTableInfo);
+          setupSearchableTable(job_id, 'seq2ogs', seqSearchInput, seqTable, seqTableInfo);
 
           visualizeBtn.style.display = 'inline-block';
           visualizeBtn.onclick = async () => {

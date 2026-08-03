@@ -4,6 +4,7 @@ bloqueante original.
 """
 
 import asyncio
+import csv
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -23,10 +24,21 @@ _RESULT_FILE_FIELDS = (
     ("tree_annot", "tree_annot_path"),
     ("ogs_info", "ogs_info_path"),
     ("seq2ogs_tsv", "seq2ogs_tsv_path"),
-    ("seq2ogs_jsonl", "seq2ogs_jsonl_path"),
     ("pairs", "pairs_path"),
     ("strict_pairs", "strict_pairs_path"),
 )
+
+# Tablas TSV que se pueden consultar/buscar desde la web sin descargarlas.
+_SEARCHABLE_TABLES = {
+    "ogs_info": "ogs_info_path",
+    "seq2ogs": "seq2ogs_tsv_path",
+}
+
+# Columnas que no se muestran en la vista de tabla (listas largas que
+# desbordan la tabla) — siguen disponibles descargando el .tsv completo.
+_EXCLUDED_COLUMNS = {
+    "ogs_info": {"OG_down", "OG_up", "Seqs", "NumRecoverySeqs", "RecoverySeqs"},
+}
 
 
 class JobStatusResponse(BaseModel):
@@ -192,6 +204,56 @@ async def download_file(job_id: str, filename: str) -> FileResponse:
     job_dir = _job_dir(job_id)
     file_path = _safe_file(job_dir, filename)
     return FileResponse(file_path, filename=filename)
+
+
+class TableResponse(BaseModel):
+    columns: list[str]
+    rows: list[list[str]]
+    total: int
+    truncated: bool
+
+
+@router.get("/{job_id}/table/{table_name}", response_model=TableResponse)
+async def search_table(job_id: str, table_name: str, q: str = "", limit: int = 200) -> TableResponse:
+    """Devuelve filas de ogs_info/seq2ogs filtradas por `q` (substring, sin
+    distinguir mayúsculas, sobre cualquier columna), para buscar en las
+    tablas desde la web sin tener que descargarlas.
+    """
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+    if job.result is None:
+        raise HTTPException(
+            status_code=409, detail=f"El job no ha terminado (estado: {job.status.value})"
+        )
+
+    attr = _SEARCHABLE_TABLES.get(table_name)
+    if attr is None:
+        raise HTTPException(status_code=404, detail="Tabla no encontrada")
+
+    path = getattr(job.result, attr)
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    limit = max(1, min(limit, 1000))
+    query = q.strip().lower()
+    excluded = _EXCLUDED_COLUMNS.get(table_name, set())
+
+    with path.open(newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        raw_header = next(reader, [])
+        keep_indices = [i for i, col in enumerate(raw_header) if col not in excluded]
+        header = [raw_header[i] for i in keep_indices]
+        matched: list[list[str]] = []
+        total = 0
+        for row in reader:
+            if query and not any(query in cell.lower() for cell in row):
+                continue
+            total += 1
+            if len(matched) < limit:
+                matched.append([row[i] for i in keep_indices if i < len(row)])
+
+    return TableResponse(columns=header, rows=matched, total=total, truncated=total > len(matched))
 
 
 @router.post("/{job_id}/visualize")
