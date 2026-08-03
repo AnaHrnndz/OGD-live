@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OgdParams(BaseModel):
@@ -27,13 +27,17 @@ class OgdParams(BaseModel):
 
     rooting: Literal["Midpoint", "MinVar"] = "Midpoint"
 
-    sp_ovlap_all: float = 0.1
-    sp_ovlap_euk: Optional[float] = None
-    sp_ovlap_bact: Optional[float] = None
-    sp_ovlap_arq: Optional[float] = None
-    lineage_threshold: float = 0.05
-    best_taxa_threshold: float = 0.9
-    species_losses_perct: float = 0.7
+    # Todos estos son fracciones (0-1) según la documentación de OGD: nunca
+    # tiene sentido un valor fuera de ese rango (p.ej. un species overlap
+    # > 1.0 haría que ningún nodo se clasifique jamás como duplicación,
+    # produciendo resultados degenerados sin ningún error visible).
+    sp_ovlap_all: float = Field(0.1, ge=0.0, le=1.0)
+    sp_ovlap_euk: Optional[float] = Field(None, ge=0.0, le=1.0)
+    sp_ovlap_bact: Optional[float] = Field(None, ge=0.0, le=1.0)
+    sp_ovlap_arq: Optional[float] = Field(None, ge=0.0, le=1.0)
+    lineage_threshold: float = Field(0.05, ge=0.0, le=1.0)
+    best_taxa_threshold: float = Field(0.9, ge=0.0, le=1.0)
+    species_losses_perct: float = Field(0.7, ge=0.0, le=1.0)
     no_inherit_outliers: bool = False
 
     raw_alg: Optional[Path] = None

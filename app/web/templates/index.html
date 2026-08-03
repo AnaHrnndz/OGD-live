@@ -561,6 +561,18 @@
       errorBanner.style.display = 'block';
     }
 
+    function formatErrorDetail(detail, fallback) {
+      if (!detail) return fallback;
+      if (typeof detail === 'string') return detail;
+      if (Array.isArray(detail)) {
+        return detail.map((e) => {
+          const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : '';
+          return field ? `${field}: ${e.msg}` : e.msg;
+        }).join('; ');
+      }
+      return fallback;
+    }
+
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
 
@@ -595,7 +607,7 @@
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         setStatus('error', 'Could not start the analysis');
-        showError(body.detail || `HTTP ${response.status}`);
+        showError(formatErrorDetail(body.detail, `HTTP ${response.status}`));
         runBtn.disabled = false;
         return;
       }
@@ -635,7 +647,7 @@
               const vres = await fetch(`/api/analyses/${job_id}/visualize`, { method: 'POST' });
               if (!vres.ok) {
                 const body = await vres.json().catch(() => ({}));
-                showError('Failed to start visualization: ' + (body.detail || vres.status));
+                showError('Failed to start visualization: ' + formatErrorDetail(body.detail, String(vres.status)));
                 return;
               }
               const { viewer_url } = await vres.json();
@@ -651,6 +663,10 @@
           setStatus('error', 'Analysis failed');
           runBtn.disabled = false;
           events.close();
+
+          const res = await fetch(`/api/analyses/${job_id}`);
+          const data = await res.json();
+          showError(data.error || 'Unknown error');
         }
       });
 

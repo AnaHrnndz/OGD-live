@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app import config
 from app.core.jobs import Job, JobAlreadyRunningError, JobStatus, job_manager
@@ -147,24 +147,29 @@ async def create_analysis(
         job_manager.release(job_id)
         raise
 
-    params = OgdParams(
-        tree_path=tree_path,
-        output_path=config.RESULTS_DIR / job_id,
-        taxonomy_type=taxonomy_type,
-        user_taxonomy=user_taxonomy_path,
-        rooting=rooting,
-        sp_delimitator=sp_delimitator,
-        sp_ovlap_all=sp_ovlap_all,
-        sp_ovlap_euk=sp_ovlap_euk,
-        sp_ovlap_bact=sp_ovlap_bact,
-        sp_ovlap_arq=sp_ovlap_arq,
-        lineage_threshold=lineage_threshold,
-        best_taxa_threshold=best_taxa_threshold,
-        species_losses_perct=species_losses_perct,
-        no_inherit_outliers=no_inherit_outliers,
-        skip_get_pairs=not extract_pairs,
-        emapper_main_table=emapper_main_table_path,
-    )
+    try:
+        params = OgdParams(
+            tree_path=tree_path,
+            output_path=config.RESULTS_DIR / job_id,
+            taxonomy_type=taxonomy_type,
+            user_taxonomy=user_taxonomy_path,
+            rooting=rooting,
+            sp_delimitator=sp_delimitator,
+            sp_ovlap_all=sp_ovlap_all,
+            sp_ovlap_euk=sp_ovlap_euk,
+            sp_ovlap_bact=sp_ovlap_bact,
+            sp_ovlap_arq=sp_ovlap_arq,
+            lineage_threshold=lineage_threshold,
+            best_taxa_threshold=best_taxa_threshold,
+            species_losses_perct=species_losses_perct,
+            no_inherit_outliers=no_inherit_outliers,
+            skip_get_pairs=not extract_pairs,
+            emapper_main_table=emapper_main_table_path,
+        )
+    except ValidationError as exc:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        job_manager.release(job_id)
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     job = job_manager.register(job_id, params)
     await job_manager.start(job)
