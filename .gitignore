@@ -6,6 +6,8 @@ data/results/
 *.sqlite
 *.sqlite.traa.pkl
 *.log
-
+.gitignore
 # Propuesta/planificación interna en español, no publicada en GitHub.
 readme.md
+CLAUDE.md
+
