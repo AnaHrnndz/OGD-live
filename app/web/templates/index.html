@@ -289,7 +289,26 @@
       position: sticky;
       top: 0;
     }
+    .table-scroll th[data-desc] {
+      cursor: pointer;
+      text-decoration: underline dotted var(--text-muted);
+      text-underline-offset: 3px;
+    }
     .table-info { display: block; margin-top: 0.35rem; color: var(--text-muted); font-size: 0.75rem; }
+    #col-tooltip {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      max-width: 260px;
+      padding: 0.5rem 0.65rem;
+      background: var(--text, #1a1a1a);
+      color: var(--bg, #fff);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      white-space: normal;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    }
     #viewer-frame {
       width: 100%;
       height: 600px;
@@ -467,6 +486,8 @@
       </div>
     </div>
 
+    <div id="col-tooltip"></div>
+
     <div class="viewer-panel" id="viewer-panel">
       <h2>Interactive tree</h2>
       <iframe id="viewer-frame" title="Interactive tree visualization"></iframe>
@@ -511,13 +532,68 @@
       }[c]));
     }
 
+    const COLUMN_DESCRIPTIONS = {
+      '#OG_name': 'OG identifier',
+      'Lca_Dup': 'Taxonomic ID of the LCA at the duplication node',
+      'TaxoLevel': 'Taxonomic level of the OG',
+      'SciName_TaxoLevel': 'Scientific name of the taxonomic level',
+      'AssocNode': 'Name of the tree node where this OG is anchored',
+      'NumSP': 'Number of species in the OG',
+      'OG_up': 'Parent OG in the hierarchy',
+      'OG_down': 'Child OG(s) in the hierarchy',
+      'NumSeqs': 'Number of sequences in the OG',
+      'NumRecoverySeqs': 'Number of sequences added to the OG by the recovery module',
+      'Species_Outliers': 'Species detected as taxonomic outliers within the OG',
+      'Num_SP_Outliers': 'Number of species detected as taxonomic outliers within the OG',
+      'Inparalogs_Rate': 'In-paralogs rate at the duplication node',
+      'SP_overlap_dup': 'Species overlap score at the duplication node (lower = cleaner duplication)',
+      'Seqs': 'List of sequence IDs in the OG',
+      'RecoverySeqs': 'List of sequence IDs added to the OG by the recovery module',
+      'Sequence': 'Sequence ID',
+      'OGs_at_TaxaLevel': 'OG(s) this sequence belongs to, tagged with their taxonomic level',
+    };
+
     function renderTable(tableEl, columns, rows) {
-      const thead = '<thead><tr>' + columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+      const thead = '<thead><tr>' + columns.map((c) => {
+        const desc = COLUMN_DESCRIPTIONS[c];
+        const descAttr = desc ? ` data-desc="${escapeHtml(desc)}"` : '';
+        return `<th${descAttr}>${escapeHtml(c)}</th>`;
+      }).join('') + '</tr></thead>';
       const tbody = '<tbody>' + rows.map((r) =>
         '<tr>' + r.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>'
       ).join('') + '</tbody>';
       tableEl.innerHTML = thead + tbody;
     }
+
+    const colTooltip = document.getElementById('col-tooltip');
+    let colTooltipFor = null;
+
+    function hideColTooltip() {
+      colTooltip.style.display = 'none';
+      colTooltipFor = null;
+    }
+
+    document.addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-desc]');
+      if (!th) {
+        hideColTooltip();
+        return;
+      }
+      if (colTooltipFor === th) {
+        hideColTooltip();
+        return;
+      }
+      colTooltip.textContent = th.dataset.desc;
+      colTooltip.style.display = 'block';
+      const rect = th.getBoundingClientRect();
+      const top = rect.bottom + 6;
+      let left = rect.left;
+      const maxLeft = window.innerWidth - colTooltip.offsetWidth - 8;
+      if (left > maxLeft) left = Math.max(8, maxLeft);
+      colTooltip.style.top = `${top}px`;
+      colTooltip.style.left = `${left}px`;
+      colTooltipFor = th;
+    });
 
     function setupSearchableTable(jobId, tableName, inputEl, tableEl, infoEl) {
       let debounceTimer;
