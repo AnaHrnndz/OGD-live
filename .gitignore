@@ -6,3 +6,6 @@ data/results/
 *.sqlite
 *.sqlite.traa.pkl
 *.log
+
+# Propuesta/planificación interna en español, no publicada en GitHub.
+readme.md
